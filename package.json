@@ -25,7 +25,7 @@
     "fs-extra": "^11.3.4",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.4.1",
+    "mongoose": "^8.10.2",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
     "pdf-lib": "^1.17.1",

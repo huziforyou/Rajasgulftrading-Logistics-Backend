@@ -27,32 +27,25 @@ app.use(cors({
 
 // 3. Vercel Database Connection Middleware
 const connectToDatabase = async (req, res, next) => {
+  if (!process.env.MONGO_URI) {
+    console.error('CRITICAL: MONGO_URI is not defined');
+    return next(); // Don't crash, but DB calls will fail later
+  }
+
   try {
     // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
     if (mongoose.connection.readyState === 1) {
       return next();
     }
     
-    // Agar already connect ho raha hai toh thora wait karein ya naya connection na banayein
-    if (mongoose.connection.readyState === 2) {
-      // Simple wait mechanism for connecting state
-      let attempts = 0;
-      while (mongoose.connection.readyState === 2 && attempts < 10) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
-      if (mongoose.connection.readyState === 1) return next();
-    }
-
+    console.log('Connecting to MongoDB...');
     await connectDB();
+    console.log('MongoDB connection successful');
     next();
   } catch (err) {
-    console.error('Database connection failed:', err);
-    // Vercel logs mein error dikhane ke liye
-    res.status(500).json({ 
-      error: 'Database connection error',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+    console.error('Database connection failed:', err.message);
+    // Don't block the request if it's not a DB-dependent route
+    next();
   }
 };
 
