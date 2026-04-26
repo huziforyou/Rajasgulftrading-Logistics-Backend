@@ -238,19 +238,26 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
           driverId = driver._id;
 
           const parseExcelDate = (dateVal) => {
-            if (!dateVal) return new Date().toISOString().split('T')[0];
-            if (dateVal instanceof Date) return dateVal.toISOString().split('T')[0];
-            const dateStr = dateVal.toString();
+            if (!dateVal) return new Date();
+            if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? new Date() : dateVal;
+            
+            const dateStr = dateVal.toString().trim();
             const parts = dateStr.split('/');
             if (parts.length === 3) {
-              // DD/MM/YYYY
-              return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+              // DD/MM/YYYY to YYYY-MM-DD
+              const d = new Date(`${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`);
+              return isNaN(d.getTime()) ? new Date() : d;
             }
-            return dateStr;
+            
+            const parsed = new Date(dateStr);
+            return isNaN(parsed.getTime()) ? new Date() : parsed;
           };
 
+          const loadingDateObj = parseExcelDate(row['Created Date'] || row['Loading Date'] || row.Date || row.loadingDate);
+          const deliveredDateObj = parseExcelDate(row['Delivered Date'] || row.deliveredDate || loadingDateObj);
+
           orderData = {
-            loadingDate: parseExcelDate(row['Created Date'] || row['Loading Date'] || row.Date || row.loadingDate),
+            loadingDate: loadingDateObj.toISOString().split('T')[0],
             loadingFrom: row['Loading From'] || row.From || row.loadingFrom || 'N/A',
             offloadingTo: row['Offloading To'] || row.To || row.offloadingTo || 'N/A',
             materialDescription: row.Material || row.Description || row.materialDescription || '',
@@ -264,7 +271,7 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
             priority: (row.Priority || row.priority || 'medium').toString().toLowerCase(),
             notes: row.Notes || row.notes || 'Bulk uploaded data',
             status: isOldData ? 'Delivered' : (row.Status || row.status || 'Pending'),
-            deliveredDate: row['Delivered Date'] || row.deliveredDate ? new Date(row['Delivered Date'] || row.deliveredDate) : new Date(),
+            deliveredDate: deliveredDateObj,
             deliveredTime: (row['Delivered Time'] || row.deliveredTime || '12:00').toString(),
             receivedQuantity: (row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0').toString(),
             quantityStatus: row['Qty Status'] || row.quantityStatus || 'Exact',
