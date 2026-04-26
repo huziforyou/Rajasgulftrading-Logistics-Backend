@@ -99,8 +99,6 @@ exports.getDispatchOrder = async (req, res, next) => {
 };
 
 // @desc    Bulk upload dispatch orders from Excel or PDF
-// @route   POST /api/dispatch/bulk-upload
-// @access  Private (Admin/Super Admin)
 exports.bulkUploadDispatchOrders = async (req, res, next) => {
   try {
     if (!req.file) {
@@ -109,6 +107,7 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
 
     const filePath = req.file.path;
     const fileExt = path.extname(req.file.originalname).toLowerCase();
+    const isOldData = req.body.isOldData === 'true' || req.body.isOldData === true;
     
     let data = [];
     const results = {
@@ -118,35 +117,20 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
     };
 
     if (fileExt === '.pdf') {
-      // PDF Parsing Logic
       const dataBuffer = await fs.readFile(filePath);
       const pdfData = await pdf(dataBuffer);
       const text = pdfData.text;
-
-      // Basic heuristic: split by "DN" or "Delivery Note" if it appears multiple times
-      // For now, let's try to find patterns in the text
       const dnMatches = text.match(/DN[- ]?Number[: ]*([A-Z0-9-]+)/gi) || [];
       
       if (dnMatches.length > 0) {
-        // Try to extract multiple orders if DNs are found
-        // This is a simple implementation; real PDF parsing needs more structure
         for (const [index, match] of dnMatches.entries()) {
           const dnNumber = match.split(/[: ]+/).pop();
-          data.push({
-            deliveryNoteNumber: dnNumber,
-            isPDF: true,
-            rawText: text // We'll try to extract more from rawText per order if possible
-          });
+          data.push({ deliveryNoteNumber: dnNumber, isPDF: true, rawText: text });
         }
       } else {
-        // Just one order or unknown format
-        data.push({
-          isPDF: true,
-          rawText: text
-        });
+        data.push({ isPDF: true, rawText: text });
       }
     } else {
-      // Excel/CSV Parsing Logic
       const workbook = XLSX.readFile(filePath);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
@@ -160,9 +144,7 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
         let orderData = {};
 
         if (row.isPDF) {
-          // Extract data from PDF text using regex
           const text = row.rawText;
-          
           const findField = (patterns) => {
             for (const pattern of patterns) {
               const match = text.match(pattern);
@@ -171,43 +153,26 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
             return null;
           };
 
-          const vendorName = findField([
-            /Vendor[: ]*([^\n\r]+)/i, 
-            /Supplier[: ]*([^\n\r]+)/i,
-            /Vendor Name[: ]*([^\n\r]+)/i,
-            /Transport[: ]*([^\n\r]+)/i
-          ]);
-          
-          const driverName = findField([
-            /Driver[: ]*([^\n\r]+)/i, 
-            /Driver Name[: ]*([^\n\r]+)/i,
-            /Driver Details[: ]*([^\n\r]+)/i
-          ]);
+          const vendorName = findField([/Vendor[: ]*([^\n\r]+)/i, /Supplier[: ]*([^\n\r]+)/i, /Transport[: ]*([^\n\r]+)/i]);
+          const driverName = findField([/Driver[: ]*([^\n\r]+)/i, /Driver Name[: ]*([^\n\r]+)/i]);
           
           let vendorId = null;
           if (vendorName) {
-            const vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName.toString().trim()}$`, 'i') });
+            const vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName.trim()}$`, 'i') });
             if (vendor) vendorId = vendor._id;
           }
 
           let driverId = null;
           if (driverName) {
-            const driver = await Driver.findOne({ name: new RegExp(`^${driverName.toString().trim()}$`, 'i') });
+            const driver = await Driver.findOne({ name: new RegExp(`^${driverName.trim()}$`, 'i') });
             if (driver) driverId = driver._id;
           }
 
-          const loadingDateRaw = findField([
-            /Date[: ]*([0-9\-\/]+)/i, 
-            /Loading Date[: ]*([0-9\-\/]+)/i,
-            /DN Date[: ]*([0-9\-\/]+)/i
-          ]);
-          
+          const loadingDateRaw = findField([/Date[: ]*([0-9\-\/]+)/i, /Loading Date[: ]*([0-9\-\/]+)/i]);
           let loadingDate = new Date().toISOString().split('T')[0];
           if (loadingDateRaw) {
-            // Basic date parsing attempt
             const parts = loadingDateRaw.split(/[\-\/]/);
             if (parts.length === 3) {
-              // Try to normalize to YYYY-MM-DD
               if (parts[0].length === 4) loadingDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
               else if (parts[2].length === 4) loadingDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
             }
@@ -215,28 +180,27 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
 
           orderData = {
             loadingDate,
-            loadingFrom: findField([/From[: ]*([^\n\r]+)/i, /Loading From[: ]*([^\n\r]+)/i, /Origin[: ]*([^\n\r]+)/i]) || 'N/A',
-            offloadingTo: findField([/To[: ]*([^\n\r]+)/i, /Offloading To[: ]*([^\n\r]+)/i, /Destination[: ]*([^\n\r]+)/i]) || 'N/A',
-            materialDescription: findField([/Material[: ]*([^\n\r]+)/i, /Description[: ]*([^\n\r]+)/i, /Items[: ]*([^\n\r]+)/i]) || '',
-            deliveryNoteNumber: row.deliveryNoteNumber || findField([/DN[: ]*([A-Z0-9-]+)/i, /Delivery Note[: ]*([A-Z0-9-]+)/i, /DN Number[: ]*([A-Z0-9-]+)/i]) || `OLD-PDF-${Date.now()}-${index}`,
-            customerName: findField([/Customer[: ]*([^\n\r]+)/i, /Customer Name[: ]*([^\n\r]+)/i, /Client[: ]*([^\n\r]+)/i]) || '',
-            customerVAT: findField([/VAT[: ]*([0-9]+)/i, /Customer VAT[: ]*([0-9]+)/i, /VAT Number[: ]*([0-9]+)/i]) || '',
-            materialQuantity: findField([/Qty[: ]*([0-9.]+)/i, /Quantity[: ]*([0-9.]+)/i, /Total Qty[: ]*([0-9.]+)/i]) || '0',
+            loadingFrom: findField([/From[: ]*([^\n\r]+)/i, /Loading From[: ]*([^\n\r]+)/i]) || 'N/A',
+            offloadingTo: findField([/To[: ]*([^\n\r]+)/i, /Offloading To[: ]*([^\n\r]+)/i]) || 'N/A',
+            materialDescription: findField([/Material[: ]*([^\n\r]+)/i, /Description[: ]*([^\n\r]+)/i]) || '',
+            deliveryNoteNumber: row.deliveryNoteNumber || findField([/DN[: ]*([A-Z0-9-]+)/i, /Delivery Note[: ]*([A-Z0-9-]+)/i]) || `OLD-PDF-${Date.now()}-${index}`,
+            customerName: findField([/Customer[: ]*([^\n\r]+)/i, /Client[: ]*([^\n\r]+)/i]) || '',
+            customerVAT: findField([/VAT[: ]*([0-9]+)/i]) || '',
+            materialQuantity: findField([/Qty[: ]*([0-9.]+)/i, /Quantity[: ]*([0-9.]+)/i]) || '0',
             assignedVendor: vendorId,
             assignedDriver: driverId,
-            vehiclePlateNumber: findField([/Plate[: ]*([^\n\r]+)/i, /Vehicle[: ]*([^\n\r]+)/i, /Truck[: ]*([^\n\r]+)/i]) || '',
+            vehiclePlateNumber: findField([/Plate[: ]*([^\n\r]+)/i, /Vehicle[: ]*([^\n\r]+)/i]) || '',
             priority: 'medium',
             notes: 'Bulk uploaded from PDF',
             status: 'Delivered',
             deliveredDate: new Date(loadingDate),
             deliveredTime: '12:00',
-            receivedQuantity: findField([/Qty[: ]*([0-9.]+)/i, /Quantity[: ]*([0-9.]+)/i]) || '0',
+            receivedQuantity: findField([/Qty[: ]*([0-9.]+)/i]) || '0',
             quantityStatus: 'Exact',
             quantityDifference: '0',
             createdBy: req.user.id
           };
         } else {
-          // Excel Row Parsing (existing logic)
           let vendorId = null;
           const vendorName = row.Vendor || row['Vendor Name'] || row.vendorName;
           if (vendorName) {
@@ -265,7 +229,7 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
             vehiclePlateNumber: row['Vehicle Plate'] || row.Plate || row.vehiclePlateNumber || '',
             priority: (row.Priority || row.priority || 'medium').toString().toLowerCase(),
             notes: row.Notes || row.notes || 'Bulk uploaded old data',
-            status: 'Delivered',
+            status: isOldData ? 'Delivered' : (row.Status || row.status || 'Pending'),
             deliveredDate: row['Delivered Date'] || row.deliveredDate ? new Date(row['Delivered Date'] || row.deliveredDate) : new Date(),
             deliveredTime: row['Delivered Time'] || row.deliveredTime || '12:00',
             receivedQuantity: row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0',
@@ -275,7 +239,6 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
           };
         }
 
-        // Validate required fields
         if (!orderData.assignedVendor || !orderData.assignedDriver) {
           results.failed++;
           results.errors.push(`Row ${index + 1}: Vendor or Driver not found (${(row.Vendor || row['Vendor Name']) || 'N/A'}, ${(row.Driver || row['Driver Name']) || 'N/A'})`);
@@ -294,7 +257,6 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
       await DispatchOrder.insertMany(ordersToCreate);
     }
 
-    // Clean up file
     await fs.remove(filePath);
 
     res.status(200).json({
