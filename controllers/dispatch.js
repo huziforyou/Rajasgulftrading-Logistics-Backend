@@ -158,14 +158,25 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
           
           let vendorId = null;
           if (vendorName) {
-            const vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName.trim()}$`, 'i') });
-            if (vendor) vendorId = vendor._id;
+            let vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName.trim()}$`, 'i') });
+            if (!vendor) {
+              vendor = await Vendor.create({ name: vendorName.trim() });
+            }
+            vendorId = vendor._id;
           }
 
           let driverId = null;
           if (driverName) {
-            const driver = await Driver.findOne({ name: new RegExp(`^${driverName.trim()}$`, 'i') });
-            if (driver) driverId = driver._id;
+            let driver = await Driver.findOne({ name: new RegExp(`^${driverName.trim()}$`, 'i') });
+            if (!driver) {
+              driver = await Driver.create({
+                name: driverName.trim(),
+                iqamaNumber: 'UNKNOWN-' + Date.now() + '-' + index,
+                vendor: vendorId,
+                status: 'active'
+              });
+            }
+            driverId = driver._id;
           }
 
           const loadingDateRaw = findField([/Date[: ]*([0-9\-\/]+)/i, /Loading Date[: ]*([0-9\-\/]+)/i]);
@@ -202,47 +213,64 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
           };
         } else {
           let vendorId = null;
-          const vendorName = row.Vendor || row['Vendor Name'] || row.vendorName;
-          if (vendorName) {
-            const vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName.toString().trim()}$`, 'i') });
-            if (vendor) vendorId = vendor._id;
+          let vendorName = (row.Vendor || row['Vendor Name'] || row.vendorName || '').toString().trim();
+          if (!vendorName) vendorName = 'Unknown Vendor';
+          
+          let vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName}$`, 'i') });
+          if (!vendor) {
+            vendor = await Vendor.create({ name: vendorName });
           }
+          vendorId = vendor._id;
 
           let driverId = null;
-          const driverName = row.Driver || row['Driver Name'] || row.driverName;
-          if (driverName) {
-            const driver = await Driver.findOne({ name: new RegExp(`^${driverName.toString().trim()}$`, 'i') });
-            if (driver) driverId = driver._id;
+          let driverName = (row.Driver || row['Driver Name'] || row.driverName || '').toString().trim();
+          if (!driverName) driverName = 'Unknown Driver';
+          
+          let driver = await Driver.findOne({ name: new RegExp(`^${driverName}$`, 'i') });
+          if (!driver) {
+            driver = await Driver.create({
+              name: driverName,
+              iqamaNumber: 'UNKNOWN-' + Date.now() + '-' + index,
+              vendor: vendorId,
+              status: 'active'
+            });
           }
+          driverId = driver._id;
+
+          const parseExcelDate = (dateVal) => {
+            if (!dateVal) return new Date().toISOString().split('T')[0];
+            if (dateVal instanceof Date) return dateVal.toISOString().split('T')[0];
+            const dateStr = dateVal.toString();
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              // DD/MM/YYYY
+              return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+            return dateStr;
+          };
 
           orderData = {
-            loadingDate: row['Loading Date'] || row.Date || row.loadingDate || new Date().toISOString().split('T')[0],
+            loadingDate: parseExcelDate(row['Created Date'] || row['Loading Date'] || row.Date || row.loadingDate),
             loadingFrom: row['Loading From'] || row.From || row.loadingFrom || 'N/A',
             offloadingTo: row['Offloading To'] || row.To || row.offloadingTo || 'N/A',
             materialDescription: row.Material || row.Description || row.materialDescription || '',
             deliveryNoteNumber: row['DN Number'] || row.DN || row.deliveryNoteNumber || `OLD-${Date.now()}-${index}`,
-            customerName: row['Customer Name'] || row.Customer || row.customerName || '',
+            customerName: row['Client Name'] || row['Customer Name'] || row.Customer || row.customerName || '',
             customerVAT: row['Customer VAT'] || row.customerVAT || '',
-            materialQuantity: row.Quantity || row.Qty || row.materialQuantity || '0',
+            materialQuantity: (row.Quantity || row.Qty || row.materialQuantity || '0').toString(),
             assignedVendor: vendorId,
             assignedDriver: driverId,
             vehiclePlateNumber: row['Vehicle Plate'] || row.Plate || row.vehiclePlateNumber || '',
             priority: (row.Priority || row.priority || 'medium').toString().toLowerCase(),
-            notes: row.Notes || row.notes || 'Bulk uploaded old data',
+            notes: row.Notes || row.notes || 'Bulk uploaded data',
             status: isOldData ? 'Delivered' : (row.Status || row.status || 'Pending'),
             deliveredDate: row['Delivered Date'] || row.deliveredDate ? new Date(row['Delivered Date'] || row.deliveredDate) : new Date(),
-            deliveredTime: row['Delivered Time'] || row.deliveredTime || '12:00',
-            receivedQuantity: row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0',
+            deliveredTime: (row['Delivered Time'] || row.deliveredTime || '12:00').toString(),
+            receivedQuantity: (row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0').toString(),
             quantityStatus: row['Qty Status'] || row.quantityStatus || 'Exact',
-            quantityDifference: row['Qty Difference'] || row.quantityDifference || '0',
+            quantityDifference: (row['Qty Difference'] || row.quantityDifference || '0').toString(),
             createdBy: req.user.id
           };
-        }
-
-        if (!orderData.assignedVendor || !orderData.assignedDriver) {
-          results.failed++;
-          results.errors.push(`Row ${index + 1}: Vendor or Driver not found (${(row.Vendor || row['Vendor Name']) || 'N/A'}, ${(row.Driver || row['Driver Name']) || 'N/A'})`);
-          continue;
         }
 
         ordersToCreate.push(orderData);
