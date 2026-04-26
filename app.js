@@ -7,8 +7,15 @@ const path = require('path');
 const errorHandler = require('./middleware/error');
 const connectDB = require('./config/db');
 
-// Connect to Database (Required for serverless as server.js is not the entry point)
-connectDB().catch(err => console.error('Database connection failed', err));
+// Connect to Database
+const startConnection = async () => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error('Initial database connection failed', err);
+  }
+};
+startConnection();
 
 const app = express();
 
