@@ -8,6 +8,11 @@ const connectDB = async () => {
     return cachedConnection;
   }
 
+  if (!process.env.MONGO_URI) {
+    console.error('MONGO_URI is not defined in environment variables');
+    throw new Error('MONGO_URI is not defined');
+  }
+
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI);
     cachedConnection = conn;

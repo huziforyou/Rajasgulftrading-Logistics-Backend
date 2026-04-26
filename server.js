@@ -28,10 +28,10 @@ const connectDB = require('./config/db');
 const app = require('./app');
 
 dotenv.config();
-connectDB();
 
-// Sirf local development ke liye listen karein, Vercel ke liye nahi
+// Sirf local development ke liye DB connect aur listen karein
 if (process.env.NODE_ENV !== 'production') {
+  connectDB();
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
