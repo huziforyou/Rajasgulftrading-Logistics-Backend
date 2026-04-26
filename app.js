@@ -4,25 +4,18 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const mongoose = require('mongoose');
+const dotenv = require('dotenv'); // Add this
 const errorHandler = require('./middleware/error');
 const connectDB = require('./config/db');
 
+// Load env vars
+dotenv.config();
+
 const app = express();
 
-// 1. Vercel Database Connection Middleware
-// Ye har request par check karega ke DB connected hai ya nahi
-const connectToDatabase = async (req, res, next) => {
-  try {
-    if (mongoose.connection.readyState >= 1) {
-      return next();
-    }
-    await connectDB();
-    next();
-  } catch (err) {
-    console.error('Database connection failed:', err);
-    res.status(500).json({ error: 'Database connection error' });
-  }
-};
+// 1. Basic Routes (DB se pehle taake check ho sake ke app chal rahi hai)
+app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // 2. CORS Configuration (MUST BE FIRST)
 app.use(cors({
@@ -32,7 +25,38 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Apply DB connection to all routes
+// 3. Vercel Database Connection Middleware
+const connectToDatabase = async (req, res, next) => {
+  try {
+    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+    if (mongoose.connection.readyState === 1) {
+      return next();
+    }
+    
+    // Agar already connect ho raha hai toh thora wait karein ya naya connection na banayein
+    if (mongoose.connection.readyState === 2) {
+      // Simple wait mechanism for connecting state
+      let attempts = 0;
+      while (mongoose.connection.readyState === 2 && attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+      if (mongoose.connection.readyState === 1) return next();
+    }
+
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('Database connection failed:', err);
+    // Vercel logs mein error dikhane ke liye
+    res.status(500).json({ 
+      error: 'Database connection error',
+      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// Apply DB connection to all subsequent routes
 app.use(connectToDatabase);
 
 // Body Parser
@@ -43,8 +67,8 @@ app.use(morgan('dev'));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Favicon Fix (Stop 500 error on favicon request)
-app.get('/favicon.ico', (req, res) => res.status(204).end());
+// Favicon Fix (Stop 500 error on favicon request) - Already handled above
+// app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // Routes
 const authRoutes = require('./routes/auth');

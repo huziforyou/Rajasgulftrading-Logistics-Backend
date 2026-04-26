@@ -1,26 +1,9 @@
 {
   "version": 2,
-  "builds": [
+  "rewrites": [
     {
-      "src": "server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "assets/**",
-          "uploads/**",
-          "config/**",
-          "middleware/**",
-          "models/**",
-          "routes/**",
-          "utils/**"
-        ]
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "server.js"
+      "source": "/(.*)",
+      "destination": "server.js"
     }
   ]
 }
