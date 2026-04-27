@@ -166,7 +166,8 @@ exports.generateDispatchOrderPDF = async (order) => {
 
     const fields = [
       ['Order ID (DN):', order.deliveryNoteNumber || 'N/A'],
-      ['Date:', order.createdAt ? new Date(order.createdAt).toLocaleDateString() : new Date().toLocaleDateString()],
+      ['Generated On:', new Date().toLocaleDateString()],
+      ['Loading Date:', order.loadingDate ? new Date(order.loadingDate).toLocaleDateString() : 'N/A'],
       ['Driver Name:', order.assignedDriver?.name || 'N/A'],
       ['Vehicle Number:', order.vehiclePlateNumber || 'N/A'],
       ['Vendor Name:', order.assignedVendor?.name || 'N/A'],
