@@ -84,11 +84,16 @@ exports.generatePDFReport = async (title, columns, data) => {
 
     // Draw Headers
     columns.forEach((col, i) => {
-      firstPage.drawText(formatArabicText(String(col)), {
-        x: leftMargin + (i * colWidth),
+      const text = formatArabicText(String(col));
+      const textWidth = boldFont.widthOfTextAtSize(text, 10);
+      const x = leftMargin + (i * colWidth) + (colWidth / 2) - (textWidth / 2);
+      
+      firstPage.drawText(text, {
+        x: x,
         y: currentY,
         size: 10,
         font: boldFont,
+        color: rgb(0, 0.2, 0.4),
       });
     });
 
@@ -98,8 +103,12 @@ exports.generatePDFReport = async (title, columns, data) => {
     data.forEach(row => {
       if (currentY < 50) return;
       row.forEach((cell, i) => {
-        firstPage.drawText(formatArabicText(String(cell || 'N/A')), {
-          x: leftMargin + (i * colWidth),
+        const text = formatArabicText(String(cell || 'N/A'));
+        const textWidth = regularFont.widthOfTextAtSize(text, 9);
+        const x = leftMargin + (i * colWidth) + (colWidth / 2) - (textWidth / 2);
+
+        firstPage.drawText(text, {
+          x: x,
           y: currentY,
           size: 9,
           font: regularFont,
