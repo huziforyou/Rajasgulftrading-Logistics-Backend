@@ -213,8 +213,8 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
           };
         } else {
           let vendorId = null;
-          let vendorName = (row.Vendor || row['Vendor Name'] || row.vendorName || '').toString().trim();
-          if (!vendorName) vendorName = 'Unknown Vendor';
+          let vendorName = (row.Vendor || row['Vendor Name'] || row.vendorName || row.Transporter || row['Transporter Name'] || row.transporterName || '').toString().trim();
+          if (!vendorName) vendorName = 'Unknown Transporter';
           
           let vendor = await Vendor.findOne({ name: new RegExp(`^${vendorName}$`, 'i') });
           if (!vendor) {
@@ -271,9 +271,9 @@ exports.bulkUploadDispatchOrders = async (req, res, next) => {
             priority: (row.Priority || row.priority || 'medium').toString().toLowerCase(),
             notes: row.Notes || row.notes || 'Bulk uploaded data',
             status: isOldData ? 'Delivered' : (row.Status || row.status || 'Pending'),
-            deliveredDate: deliveredDateObj,
-            deliveredTime: (row['Delivered Time'] || row.deliveredTime || '12:00').toString(),
-            receivedQuantity: (row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0').toString(),
+            deliveredDate: (isOldData || (row.Status || row.status) === 'Delivered') ? deliveredDateObj : null,
+            deliveredTime: (isOldData || (row.Status || row.status) === 'Delivered') ? (row['Delivered Time'] || row.deliveredTime || '12:00').toString() : '',
+            receivedQuantity: (isOldData || (row.Status || row.status) === 'Delivered') ? (row['Received Qty'] || row.receivedQuantity || row.Quantity || row.Qty || row.materialQuantity || '0').toString() : '0',
             quantityStatus: row['Qty Status'] || row.quantityStatus || 'Exact',
             quantityDifference: (row['Qty Difference'] || row.quantityDifference || '0').toString(),
             createdBy: req.user.id

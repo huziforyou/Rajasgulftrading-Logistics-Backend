@@ -179,7 +179,7 @@ exports.generateDispatchOrderPDF = async (order) => {
       ['Loading Date:', order.loadingDate ? new Date(order.loadingDate).toLocaleDateString() : 'N/A'],
       ['Driver Name:', order.assignedDriver?.name || 'N/A'],
       ['Vehicle Number:', order.vehiclePlateNumber || 'N/A'],
-      ['Vendor Name:', order.assignedVendor?.name || 'N/A'],
+      ['Transporter Name:', order.assignedVendor?.name || 'N/A'],
       ['Loading Point:', order.loadingFrom || 'N/A'],
       ['Unloading Point:', order.offloadingTo || 'N/A'],
       ['Client Name:', order.customerName || 'N/A'],

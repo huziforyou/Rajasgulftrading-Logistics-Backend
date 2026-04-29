@@ -27,7 +27,7 @@ exports.getVendor = async (req, res, next) => {
   try {
     const vendor = await Vendor.findById(req.params.id);
     if (!vendor) {
-      return res.status(404).json({ success: false, message: 'Vendor not found' });
+      return res.status(404).json({ success: false, message: 'Transporter not found' });
     }
 
     // Fetch records for this vendor
@@ -70,7 +70,7 @@ exports.updateVendor = async (req, res, next) => {
     });
 
     if (!vendor) {
-      return res.status(404).json({ success: false, message: 'Vendor not found' });
+      return res.status(404).json({ success: false, message: 'Transporter not found' });
     }
 
     res.status(200).json({ success: true, data: vendor });
@@ -87,7 +87,7 @@ exports.deleteVendor = async (req, res, next) => {
     const vendor = await Vendor.findById(req.params.id);
 
     if (!vendor) {
-      return res.status(404).json({ success: false, message: 'Vendor not found' });
+      return res.status(404).json({ success: false, message: 'Transporter not found' });
     }
 
     await vendor.deleteOne();
